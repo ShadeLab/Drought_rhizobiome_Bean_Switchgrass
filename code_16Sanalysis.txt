@@ -1,0 +1,260 @@
+####
+16S analysis in Qiime2 workflow in HPCC-- plate 1 for drought rhizobiome study
+####
+
+##steps to download qiime2
+conda update conda
+wget https://data.qiime2.org/distro/core/qiime2-2021.4-py38-linux-conda.yml
+conda env create -n qiime2-2021.4 --file qiime2-2021.4-py38-linux-conda.yml ##creates an environment called qiime2-2021.4
+conda info --envs ##check conda envs
+conda activate qiime2-2021.4 ##activate conda env
+
+##to download mothur follow these steps in HPCC
+module spider mothur
+module spider Mothur/1.44.3-Python-3.7.2
+module purge
+module load GCC/8.2.0-2.31.1  OpenMPI/3.1.3
+module load Mothur/1.44.3-Python-3.7.2
+mothur ##will open mothur on HPCC, use quit() to go back to bash
+
+##copy all .gz files to a new folder called DNA_analysis
+##for subsequent steps navigate to folder called DNA_analysis
+
+##change .gz files to .fastq files 
+(base) -bash-4.2$ gunzip *.gz
+
+##make manifest file, since mothur can do this step easily using the make.file command we will use mothur for this step
+##couldnt find an alternative in qiime2
+
+##do the following within the DNA_analysis folder. If mothur is not loaded within this folder reload the modules.
+
+(base) -bash-4.2$ module purge
+(base) -bash-4.2$ module load GCC/8.2.0-2.31.1  OpenMPI/3.1.3
+(base) -bash-4.2$ module load Mothur/1.44.3-Python-3.7.2
+(base) -bash-4.2$ mothur
+
+mothur > make.file(inputdir=., type=fastq, prefix=stability)
+
+##output 
+##Setting input directory to: /mnt/ufs18/rs-033/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/
+
+##Output File Names: 
+##/mnt/ufs18/rs-033/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/stability.files
+##stability.files can be opened in excel and the header changed to match what is needed for qiime2
+
+##quit mothur, this brings us back to bash 
+
+mothur > quit() 
+
+
+##open stability.files in excel and change header to sample-id, forward-absolute-filepath and reverse-absolute-filepath
+## save as .txt file called manifest_file.txt
+
+(base) -bash-4.2$ conda activate qiime2-2021.4
+
+(qiime2-2021.4) -bash-4.2$ qiime tools import --type 'SampleData[PairedEndSequencesWithQuality]' --input-path manifest_file.txt --output-path paired-end-demux.qza --input-format PairedEndFastqManifestPhred33V2
+
+##output says : Imported manifest_file.txt as PairedEndFastqManifestPhred33V2 to paired-end-demux.qza
+
+##I will do some quality control with fastQC also. this code will store all Fastqc reports in zip file and also export as the usual html file. Will be stored individually not in a folder.
+
+module spider Fastqc
+module load FastQC/0.11.7-Java-1.8.0_162
+fastqc *.fastq
+
+
+##All of the sequence data is stored compressed in the file paired-end-demux.qza. If you wish, you may create a visualization file from it with the following command:
+(qiime2-2021.4) -bash-4.2$ qiime demux summarize --i-data paired-end-demux.qza --o-visualization demux.qzv
+##Saved Visualization to: demux.qzv
+
+# Apply an initial quality filtering process based on quality scores, I did not run this prior to dada2 to retain as many sequences as possible for dada2 filtering
+qiime quality-filter q-score \
+    --i-demux paired-end-demux.qza \
+    --o-filtered-sequences demux-pe-filtered.qza \
+    --o-filter-stats demux-filter-stats.qza
+	
+
+##next step is to denoise using DADA2 or deblur plugin. There are two options to optimize merging of the forward and reverse reads. This is done by removing as much of the lower quality portions of the reads as possible and still leave enough overlap. We can do this by 1. inspection of the quality plots which is subjective, or 2. use Zymo Research’s program FIGARO to find the parameters for me. See John Quensen's tutorial on FIGARO for how to install and run Figaro here http://john-quensen.com/tutorials/figaro/. Also see code_figaro made by Sree
+
+
+(qiime2-2021.4) -bash-4.2$ qiime dada2 denoise-paired --i-demultiplexed-seqs paired-end-demux.qza --p-trunc-len-f 229 --p-trunc-len-r 46 --o-table table.qza --o-representative-sequences rep-seqs.qza --o-denoising-stats denoising-stats.qza
+
+
+##error after running code above 
+Plugin error from dada2:
+
+  An error was encountered while running DADA2 in R (return code 1), please inspect stdout and stderr to learn more.
+
+Debug info has been saved to /tmp/qiime2-q2cli-err-3ogs3usw.log
+
+(qiime2-2021.4) -bash-4.2$ less /tmp/qiime2-q2cli-err-3ogs3usw.log
+
+
+##above code shows detailed error as below
+Running external command line application(s). This may print messages to stdout and/or stderr.
+The command(s) being run are below. These commands cannot be manually re-run as they will depend on temporary files that no longer exist.
+
+Command: run_dada_paired.R /tmp/tmpw_xv1nhw/forward /tmp/tmpw_xv1nhw/reverse /tmp/tmpw_xv1nhw/output.tsv.biom /tmp/tmpw_xv1nhw/track.tsv /tmp/tmpw_xv1nhw/filt_f /tmp/tmpw_xv1nhw/filt_r 229 46 0 0 2.0 2.0 2 12 independent consensus 1.0 1 1000000
+
+R version 4.0.3 (2020-10-10) 
+Loading required package: Rcpp
+DADA2: 1.18.0 / Rcpp: 1.0.6 / RcppParallel: 5.1.2 
+1) Filtering Error in (function (fn, fout, maxN = c(0, 0), truncQ = c(2, 2), truncLen = c(0,  : 
+  Mismatched forward and reverse sequence files: 30965, 100000.
+Execution halted
+Traceback (most recent call last):
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 266, in denoise_paired
+    run_commands([cmd])
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 36, in run_commands
+    subprocess.run(cmd, check=True)
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/subprocess.py", line 516, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['run_dada_paired.R', '/tmp/tmpw_xv1nhw/forward', '/tmp/tmpw_xv1nhw/reverse', '/tmp/tmpw_xv1nhw/output.tsv.biom', '/tmp/tmpw_xv1nhw/track.tsv', '/tmp/tmpw_xv1nhw/filt_f', '/tmp/tmpw_xv1nhw/filt_r', '229', '46', '0', '0', '2.0', '2.0', '2', '12', 'independent', 'consensus', '1.0', '1', '1000000']' returned non-zero exit status 1.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2cli/commands.py", line 329, in __call__
+    results = action(**arguments)
+  File "<decorator-gen-514>", line 2, in denoise_paired
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/qiime2/sdk/action.py", line 244, in bound_callable
+    outputs = self._callable_executor_(scope, callable_args,
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/qiime2/sdk/action.py", line 390, in _callable_executor_
+    output_views = self._callable(**view_args)
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 279, in denoise_paired
+    raise Exception("An error was encountered while running DADA2"
+Exception: An error was encountered while running DADA2 in R (return code 1), please inspect stdout and stderr to learn mor
+
+#mismatched forward and reverse sequence files likely resulted from wrong naming of sample es in manifest file sample-id column. I corrected the error and ran the code from the start again.
+
+(base) -bash-4.2$ gunzip *.gz
+
+##activate qiime2 environment
+(base) -bash-4.2$ conda activate qiime2-2021.4
+
+
+##using the *new* manifest file run the command below
+(qiime2-2021.4) -bash-4.2$ qiime tools import --type 'SampleData[PairedEndSequencesWithQuality]' --input-path manifest_file.txt --output-path paired-end-demux.qza --input-format PairedEndFastqManifestPhred33V2
+
+##Imported manifest_file.txt as PairedEndFastqManifestPhred33V2 to paired-end-demux.qza
+
+(qiime2-2021.4) -bash-4.2$ qiime demux summarize --i-data paired-end-demux.qza --o-visualization demux.qzv
+
+(qiime2-2021.4) -bash-4.2$ qiime dada2 denoise-paired --i-demultiplexed-seqs paired-end-demux.qza --p-trunc-len-f 229 --p-trunc-len-r 46 --o-table table.qza --o-representative-sequences rep-seqs.qza --o-denoising-stats denoising-stats.qza
+
+##gave error
+Plugin error from dada2:
+
+  An error was encountered while running DADA2 in R (return code -9), please inspect stdout and stderr to learn more.
+
+Debug info has been saved to /tmp/qiime2-q2cli-err-4ln7inq9.log
+Ran command less /tmp/qiime2-q2cli-err-4ln7inq9.log 
+##error says
+
+Running external command line application(s). This may print messages to stdout and/or stderr.
+The command(s) being run are below. These commands cannot be manually re-run as they will depend on temporary files that no longer exist.
+
+Command: run_dada_paired.R /tmp/tmplouwddnp/forward /tmp/tmplouwddnp/reverse /tmp/tmplouwddnp/output.tsv.biom /tmp/tmplouwddnp/track.tsv /tmp/tmplouwddnp/filt_f /tmp/tmplouwddnp/filt_r 229 46 0 0 2.0 2.0 2 12 independent consensus 1.0 1 1000000
+
+R version 4.0.3 (2020-10-10) 
+Loading required package: Rcpp
+DADA2: 1.18.0 / Rcpp: 1.0.6 / RcppParallel: 5.1.2 
+1) Filtering ........................................................................................
+2) Learning Error Rates
+247671057 total bases in 1081533 reads from 10 samples will be used for learning the error rates.
+Traceback (most recent call last):
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 266, in denoise_paired
+    run_commands([cmd])
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 36, in run_commands
+    subprocess.run(cmd, check=True)
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/subprocess.py", line 516, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['run_dada_paired.R', '/tmp/tmplouwddnp/forward', '/tmp/tmplouwddnp/reverse', '/tmp/tmplouwddnp/output.tsv.biom', '/tmp/tmplouwddnp/track.tsv', '/tmp/tmplouwddnp/filt_f', '/tmp/tmplouwddnp/filt_r', '229', '46', '0', '0', '2.0', '2.0', '2', '12', 'independent', 'consensus', '1.0', '1', '1000000']' died with <Signals.SIGKILL: 9>.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2cli/commands.py", line 329, in __call__
+    results = action(**arguments)
+  File "<decorator-gen-514>", line 2, in denoise_paired
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/qiime2/sdk/action.py", line 244, in bound_callable
+    outputs = self._callable_executor_(scope, callable_args,
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/qiime2/sdk/action.py", line 390, in _callable_executor_
+    output_views = self._callable(**view_args)
+  File "/mnt/home/bandopad/miniconda3/envs/qiime2-2021.4/lib/python3.8/site-packages/q2_dada2/_denoise.py", line 279, in denoise_paired
+    raise Exception("An error was encountered while running DADA2"
+Exception: An error was encountered while running DADA2 in R (return code -9), please inspect stdout and stderr to learn more.
+
+##I figured it might be a memory issue so I made a batch script that included more time on the Job. See qiime2-dada2denoise.sb
+
+##this worked and exported the required files
+
+##visualize the output using the codes below
+qiime metadata tabulate \
+  --m-input-file denoising-stats.qza \
+  --o-visualization denoising-stats.qzv
+
+qiime feature-table summarize \
+  --i-table table.qza \
+  --o-visualization table.qzv \
+  --m-sample-metadata-file sample-metadata.tsv
+
+qiime feature-table tabulate-seqs \
+  --i-data rep-seqs.qza \
+  --o-visualization rep-seqs.qzv
+
+##exported the required file formats in tsp or pdf and checked them 
+
+##assign taxonomy
+
+qiime feature-classifier classify-sklearn \
+  --i-classifier silva-138-99-515-806-nb-classifier.qza \
+  --i-reads rep-seqs.qza \
+  --o-classification taxonomy.qza
+
+##the above code was killed again due to issue with memory, so I made a classify-silva-taxonomy.sb file with the same code and submitted the job
+
+##the job worked and the file taxonomy.qza was exported
+
+##next output taxonomy as qzv file which will help export to tsv file
+
+qiime metadata tabulate \
+  --m-input-file taxonomy.qza \
+  --o-visualization taxonomy.qzv
+
+
+#Export OTU table
+qiime tools export \
+  --input-path table.qza \
+  --output-path phyloseq
+
+##Exported table.qza as BIOMV210DirFmt to directory phyloseq (no need to create a phyloseq directory for this step. The directory will be created when running the command.
+
+# OTU tables exports as feature-table.biom so convert to .tsv
+# - Change -i and -o paths accordingly
+biom convert \
+  -i phyloseq/feature-table.biom \
+  -o phyloseq/otu_table.txt \
+  --to-tsv
+
+
+# Manually change #OTUID to OTUID in otu_table.txt
+
+# 2 Export taxonomy table
+qiime tools export \
+  --input-path taxonomy.qza \
+  --output-path phyloseq
+
+#Exported taxonomy.qza as TSVTaxonomyDirectoryFormat to directory phyloseq
+
+
+#manually change Feature ID to OTUID in taxonomy.tsv
+
+##these files are now ready to export to R and run using phyloseq
+
+
+
+
+
+
+

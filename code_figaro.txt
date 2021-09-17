@@ -1,0 +1,77 @@
+
+Create figaro environment while being in the working directory where qiime is running
+
+wget http://john-quensen.com/wp-content/uploads/2020/03/figaro.yml
+conda env create -n figaro -f figaro.yml
+
+
+Next, download and install FIGARO by running the following commands from the current directory:
+wget https://github.com/Zymo-Research/figaro/archive/master.zip
+unzip master.zip
+rm master.zip
+mv figaro-master figaro
+cd figaro/figaro
+
+
+
+
+
+# Test FIGARO installation
+# Activate the FIGARO environment
+conda activate figaro
+
+cd 
+mkdir test_figaro
+cd test_figaro
+
+# Download example files from the QIIME2 tutorial pages
+wget "https://data.qiime2.org/2020.2/tutorials/atacama-soils/1p/forward.fastq.gz"
+wget "https://data.qiime2.org/2020.2/tutorials/atacama-soils/1p/reverse.fastq.gz"
+ 
+ # Decompress
+ gzip -d *.fastq.gz
+ 
+ # Rename the files in Zymo format
+ mv forward.fastq sam1_16s_R1.fastq
+ mv reverse.fastq sam1_16s_R2.fastqto
+
+##when renaming multiple files use stability files to rename in excel: such as rename DNA_ with sam, then rename _S**_L***_ with _16s_ in excel. Then save a .sb file. Create .sb file as per rules of batch file and then use dos2unix <submission_script> to change to unix if needed. submit the batch file, rename will be successful.For plate 1 data I moved all fastq files to folder named fastq_plate1 and renamed all samples there using the batch file. Then ran Figaro using samples in folder fastq_plate1.
+
+
+# Run FIGARO
+ # cd to installation folder
+ cd /figaro/figaro
+ python figaro.py -i /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/test_figaro/ -o /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/test_figaro/ -f 1 -r 1 -a 253 -F zymo
+
+##for plate 1 data
+python figaro.py -i /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/fastq_plate1/ -o /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/fastq_plate1/ -f 1 -r 1 -a 253 -F zymo
+
+#truncation length 229 F and 46 R
+
+##added minimum overlap as -m 30
+
+python figaro.py -i /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/fastq_plate1/ -o /mnt/research/ShadeLab/WorkingSpace/Bandopadhyay_WorkingSpace/drought_rhizobiome/DNA_analysis/fastq_plate1/ -f 1 -r 1 -a 253 -m 30 -F zymo
+
+##truncation parameters 241 F and 44 R
+
+conda deactivate
+
+
+##for plates 1234 DNA only
+##less trim parameters json results
+[
+    {
+        "trimPosition": [
+            123,
+            162
+        ],
+        "maxExpectedError": [
+            1,
+            2
+        ],
+        "readRetentionPercent": 92.31,
+        "score": 91.31192723685871
+    },
+
+
+Overlap: 35 bp
